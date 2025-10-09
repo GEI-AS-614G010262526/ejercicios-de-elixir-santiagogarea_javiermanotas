@@ -1,9 +1,21 @@
 defmodule Eratostenes do
 
+  @moduledoc """
+  Implementation of concurrent version of the Sieve of Eratosthenes
+  """
+
+  # ============================================================================
+  # Public Exports
+  # ============================================================================
+
   def primos(n) when n < 2, do: []
   def primos(n) do
     criba(secuencia(2, n))
   end
+
+  # ============================================================================
+  # Private Functions
+  # ============================================================================
 
   defp secuencia(n, n), do: [n]
   defp secuencia(n, m) do
