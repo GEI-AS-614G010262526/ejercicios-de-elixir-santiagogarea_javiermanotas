@@ -1,0 +1,87 @@
+defmodule GestorDeRecursos do
+  @moduledoc """
+  Module that implements a simple distributed resource manager.
+  """
+
+  @type resource :: atom()
+
+  # ============================================================================
+  # Lifecycle Functions
+  # ============================================================================
+  @spec start([resource()]) :: {:ok, pid()}
+  def start(resources) do
+    pid = spawn(fn -> loop(%{:available => resources, :allocated => []}) end)
+
+    case :global.register_name(:gestor, pid) do
+      :yes -> {:ok, pid}
+      :no -> {:error, :already_started}
+    end
+  end
+
+  # ============================================================================
+  # Public API
+  # ============================================================================
+
+  @spec alloc() :: {:ok, resource()} | {:error, :sin_recursos}
+  def alloc() do
+    send(:global.whereis_name(:gestor), {:alloc, self()})
+
+    receive do
+      {:ok, resource} -> {:ok, resource}
+      {:error, :sin_recursos} -> {:error, :sin_recursos}
+    end
+  end
+
+  @spec release(resource()) :: :ok | {:error, :recurso_no_reservado}
+  def release(resource) do
+    send(:global.whereis_name(:gestor), {:release, self(), resource})
+
+    receive do
+      :ok -> :ok
+      {:error, :recurso_no_reservado} -> {:error, :recurso_no_reservado}
+    end
+  end
+
+  @spec avail() :: non_neg_integer()
+  def avail() do
+    send(:global.whereis_name(:gestor), {:avail, self()})
+
+    receive do
+      {:count, count} -> count
+    end
+  end
+
+  # ============================================================================
+  # Private Functions
+  # ============================================================================
+  defp loop(%{:available => available, :allocated => allocated}) do
+    receive do
+      {:alloc, from} ->
+        available
+        |> case do
+          [] ->
+            send(from, {:error, :sin_recursos})
+            loop(%{:available => available, :allocated => allocated})
+          [resource | rest] ->
+            send(from, {:ok, resource})
+            loop(%{:available => rest, :allocated => [{resource, from} | allocated]})
+        end
+
+      {:release, from, resource} ->
+        Keyword.get(allocated, resource, nil)
+        |> case do
+          ^from when is_pid(from) ->
+            send(from, :ok)
+            new_allocated = List.keydelete(allocated, resource, 0)
+            loop(%{:available => [resource | available], :allocated => new_allocated})
+          _ ->
+            send(from, {:error, :recurso_no_reservado})
+            loop(%{:available => available, :allocated => allocated})
+          end
+
+      {:avail, from} ->
+        send(from, {:count, length(available)})
+        loop(%{:available => available, :allocated => allocated})
+    end
+  end
+end
