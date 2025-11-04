@@ -23,13 +23,13 @@ defmodule Eratostenes do
   # Private Functions
   # ============================================================================
 
-  defp filtro(num) do
+  defp tail(num) do
     receive do
       {:check, i} -> if rem(i, num) != 0 do
-        sig = spawn(fn () -> filtro(i) end)
+        sig = spawn(fn () -> tail(i) end)
         filtro(num, sig)
       else
-        filtro(num)
+        tail(num)
       end
 
       {:end, sender, l} -> send sender, {:result, Enum.reverse([num | l])}

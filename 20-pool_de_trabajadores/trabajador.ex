@@ -20,8 +20,8 @@ defmodule Trabajador do
   Sends a job to the worker process.
   """
   @spec send_job(pid(), {reference(), pid(), {(() -> any()), non_neg_integer()}}) :: :ok
-  def send_job(worker, {ref, from, {job, position}}) do
-    send(worker, {:trabajo, self(), {ref, from, {job, position}}})
+  def send_job(worker, {ref, from, {job, position}}=payload) do
+    send(worker, {:trabajo, self(), payload})
   end
 
   @doc """

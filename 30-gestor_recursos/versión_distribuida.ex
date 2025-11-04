@@ -10,7 +10,7 @@ defmodule GestorDeRecursos do
   # ============================================================================
   @spec start([resource()]) :: {:ok, pid()}
   def start(resources) do
-    pid = spawn(fn -> loop(%{:available => resources, :allocated => []}) end)
+    pid = spawn(fn -> loop(resources, []) end)
 
     case :global.register_name(:gestor, pid) do
       :yes -> {:ok, pid}
@@ -54,17 +54,17 @@ defmodule GestorDeRecursos do
   # ============================================================================
   # Private Functions
   # ============================================================================
-  defp loop(%{:available => available, :allocated => allocated}) do
+  defp loop(available, allocated) do
     receive do
       {:alloc, from} ->
         available
         |> case do
           [] ->
             send(from, {:error, :sin_recursos})
-            loop(%{:available => available, :allocated => allocated})
+            loop(available, allocated)
           [resource | rest] ->
             send(from, {:ok, resource})
-            loop(%{:available => rest, :allocated => [{resource, from} | allocated]})
+            loop(rest, [{resource, from} | allocated])
         end
 
       {:release, from, resource} ->
@@ -73,15 +73,15 @@ defmodule GestorDeRecursos do
           ^from when is_pid(from) ->
             send(from, :ok)
             new_allocated = List.keydelete(allocated, resource, 0)
-            loop(%{:available => [resource | available], :allocated => new_allocated})
+            loop([resource | available], new_allocated)
           _ ->
             send(from, {:error, :recurso_no_reservado})
-            loop(%{:available => available, :allocated => allocated})
+            loop(available, allocated)
           end
 
       {:avail, from} ->
         send(from, {:count, length(available)})
-        loop(%{:available => available, :allocated => allocated})
+        loop(available, allocated)
     end
   end
 end
