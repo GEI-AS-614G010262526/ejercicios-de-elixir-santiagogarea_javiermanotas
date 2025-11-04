@@ -1,4 +1,20 @@
 defmodule ServidoresFederados.Server do
+  @moduledoc """
+  Module that implements a Federated Server.
+
+  It allows:
+   - Registering users
+   - Retrieving user profiles (local and remote)
+   - Posting messages to other users (local and remote)
+   - Retrieving own messages (only local)
+
+  Something important to note is that the user_id is built as "username@server_name",
+  where server_name is the short name of the node where the user is registered. For
+  this reason, the different nodes must be connected to each other in the moment of
+  making requests to remote users because the server find the larger node name from
+  the user_id and the list of connected nodes.
+  """
+
   use GenServer
 
   alias ServidoresFederados.Models.Actor
@@ -10,7 +26,7 @@ defmodule ServidoresFederados.Server do
   # ============================================================================
 
   @doc """
-  Starts the Federated Server with the name of the current node.
+  Starts the Federated Server with the short name of the current node.
   """
   @spec start_link(any()) :: {:ok, pid()} | {:error, any()}
   def start_link(_) do
@@ -43,8 +59,8 @@ defmodule ServidoresFederados.Server do
   Retrieves all messages for a user if the user is registered on the server.
   """
   @spec retrieve_messages(Perfil.id()) :: {:ok, [any()]} | {:error, any()}
-  def retrieve_messages(user),
-    do: GenServer.call(server_name(), {:retrieve_messages, user})
+  def retrieve_messages(user_id),
+    do: GenServer.call(server_name(), {:retrieve_messages, user_id})
 
   # ============================================================================
   # GenServer Callbacks
@@ -150,7 +166,7 @@ defmodule ServidoresFederados.Server do
     do: Map.has_key?(state.users, requestor)
 
   defp get_remote_profile(server, user_id) do
-    case find_node(server) do
+    case find_node(server_name_from_user_id(user_id)) do
       nil -> {
         :error, :server_not_found}
       node ->
@@ -170,7 +186,14 @@ defmodule ServidoresFederados.Server do
    end
 
   defp find_node(server) do
-    Node.list() |> Enum.find(fn n -> Atom.to_string(n) |> String.starts_with?(to_string(server)) end)
+    # Suppose that all nodes are connected
+    Node.list()
+    |> Enum.find(
+      fn n ->
+        Atom.to_string(n)
+        |> String.starts_with?(to_string(server))
+      end
+    )
    end
 
   def server_name() do
@@ -181,8 +204,13 @@ defmodule ServidoresFederados.Server do
     |> String.to_atom()
    end
 
+  def server_name_from_user_id(id) do
+    [_, domain] = String.split(id, "@")
+    String.to_atom("#{domain}")
+   end
+
   defp post_message_to_remote(server, sender, receiver, msg) do
-    case find_node(server) do
+    case find_node(server_name_from_user_id(receiver)) do
       nil -> {:error, :server_not_found}
       node ->
         GenServer.call({username_to_server(receiver), node}, {:post_message_from_server, server, sender, receiver, msg})
