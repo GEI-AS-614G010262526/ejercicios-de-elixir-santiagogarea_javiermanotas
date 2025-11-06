@@ -33,7 +33,9 @@ defmodule MicroBankTest do
   end
 
   test "process revives" do
-    Process.exit(GenServer.whereis(MicroBank), :kill)
+    pid = GenServer.whereis(MicroBank)
+    Process.exit(pid, :kill)
+    assert Process.alive?(pid) == false
 
     # process might take some time to be alive
     :timer.sleep(100)

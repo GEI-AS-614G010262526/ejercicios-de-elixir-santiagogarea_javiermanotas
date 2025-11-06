@@ -10,7 +10,7 @@ defmodule GestorDeRecursos do
   # ============================================================================
   @spec start([resource()]) :: {:ok, pid()}
   def start(resources) do
-    pid = spawn(fn -> init(%{:available => resources, :allocated => []}) end)
+    pid = spawn(fn -> init(resources, []) end)
 
     case :global.register_name(:gestor, pid) do
       :yes -> {:ok, pid}
@@ -54,23 +54,23 @@ defmodule GestorDeRecursos do
   # ============================================================================
   # Private Functions
   # ============================================================================
-  defp init(state) do
+  defp init(available, allocated) do
     Process.flag(:trap_exit, true)
-    loop(state)
+    loop(available, allocated)
   end
 
-  defp loop(%{:available => available, :allocated => allocated}) do
+  defp loop(available, allocated) do
     receive do
       {:alloc, from} ->
         available
         |> case do
           [] ->
             send(from, {:error, :sin_recursos})
-            loop(%{:available => available, :allocated => allocated})
+            loop(available, allocated)
           [resource | rest] ->
             link_process_if_needed(from, allocated)
             send(from, {:ok, resource})
-            loop(%{:available => rest, :allocated => [{resource, from} | allocated]})
+            loop(rest, [{resource, from} | allocated])
         end
 
       {:release, from, resource} ->
@@ -80,29 +80,29 @@ defmodule GestorDeRecursos do
             new_allocated = List.keydelete(allocated, resource, 0)
             unlink_process_if_needed(from, new_allocated)
             send(from, :ok)
-            loop(%{:available => [resource | available], :allocated => new_allocated})
+            loop([resource | available], new_allocated)
           _ ->
             send(from, {:error, :recurso_no_reservado})
-            loop(%{:available => available, :allocated => allocated})
+            loop(available, allocated)
           end
 
       {:avail, from} ->
         send(from, {:count, length(available)})
-        loop(%{:available => available, :allocated => allocated})
+        loop(available, allocated)
 
       {:nodedown, node} ->
         {to_free, new_allocated} = Enum.split_with(allocated, fn {_resource, p} -> node(p) == node end)
         freed_resources = Enum.map(to_free, fn {resource, _pid} -> resource end)
-        loop(%{:available => freed_resources ++ available, :allocated => new_allocated})
+        loop(freed_resources ++ available, new_allocated)
 
       # Ignore noconnection message becouse we are already handling nodedown
       {:EXIT, _pid, :noconnection} ->
-        loop(%{:available => available, :allocated => allocated})
+        loop(available, allocated)
 
       {:EXIT, pid, _reason} ->
         {to_free, new_allocated} = Enum.split_with(allocated, fn {_resource, p} -> p == pid end)
         freed_resources = Enum.map(to_free, fn {resource, _pid} -> resource end)
-        loop(%{:available => freed_resources ++ available, :allocated => new_allocated})
+        loop(freed_resources ++ available, new_allocated)
     end
   end
 
